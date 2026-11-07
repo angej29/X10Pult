@@ -1,14 +1,22 @@
 package com.x10pult.app.ui
 
 import android.annotation.SuppressLint
+import android.content.Intent
 import android.graphics.Bitmap
 import android.net.Uri
+import android.net.http.SslError
 import android.util.Log
 import android.webkit.ConsoleMessage
 import android.webkit.CookieManager
+import android.webkit.SslErrorHandler
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
+import android.webkit.WebResourceResponse
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.ui.platform.LocalContext
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.activity.compose.BackHandler
@@ -64,6 +72,7 @@ fun LoginScreen(vm: AppViewModel) {
         )
         vm.error?.let { ErrorCard(it) }
         if (vm.busy) BusyRow(vm.progress)
+        vm.verifyUrl?.let { url -> VerifyCard(url, onHere = vm::openVerificationHere) }
 
         OutlinedTextField(
             value = user,
@@ -106,6 +115,35 @@ fun LoginScreen(vm: AppViewModel) {
     }
 }
 
+/**
+ * Xiaomi просить підтвердити вхід кодом. Найнадійніше — у звичайному браузері телефона:
+ * підтвердити там і знову натиснути «Увійти» (той самий deviceId — Xiaomi вже знає цей вхід).
+ */
+@Composable
+private fun VerifyCard(url: String, onHere: () -> Unit) {
+    val context = LocalContext.current
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),
+    ) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("Xiaomi просить підтвердити вхід", style = MaterialTheme.typography.titleMedium)
+            Text(
+                "1. Натисніть «Відкрити в браузері» і введіть на сторінці Xiaomi код із SMS або пошти.\n" +
+                    "2. Поверніться сюди й ще раз натисніть «Увійти» (пароль той самий).",
+                style = MaterialTheme.typography.bodyMedium,
+            )
+            Button(
+                onClick = {
+                    runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
+                },
+                modifier = Modifier.fillMaxWidth(),
+            ) { Text("Відкрити в браузері") }
+            TextButton(onClick = onHere) { Text("Відкрити тут, у застосунку") }
+        }
+    }
+}
+
 /** Сторінка входу Xiaomi. Коли вона переходить на сервер токенів (sts), вхід завершено — беремо куки. */
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
@@ -129,6 +167,13 @@ fun LoginWebScreen(vm: AppViewModel) {
     }
 
     val url = vm.webUrl
+    // Помилки сторінки видно прямо на екрані — щоб зрозуміти, чому вона порожня, без кабелю й журналів
+    val problems = remember { mutableStateListOf<String>() }
+    fun note(text: String) {
+        Log.w("X10Web", text)
+        if (problems.size >= 6) problems.removeAt(0)
+        problems.add(text.take(160))
+    }
     Column(Modifier.fillMaxSize()) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             TextButton(onClick = vm::cancelWebLogin) { Text("Скасувати") }
@@ -144,6 +189,14 @@ fun LoginWebScreen(vm: AppViewModel) {
                 color = MaterialTheme.colorScheme.primary,
             )
         }
+        if (problems.isNotEmpty()) {
+            Text(
+                problems.joinToString("\n"),
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.error,
+            )
+        }
         AndroidView(
             modifier = Modifier.fillMaxWidth().weight(1f),
             factory = { context ->
@@ -151,16 +204,29 @@ fun LoginWebScreen(vm: AppViewModel) {
                     settings.javaScriptEnabled = true
                     settings.domStorageEnabled = true
                     CookieManager.getInstance().setAcceptCookie(true)
-                    // Помилки сторінки — у журнал (logcat, тег X10Web), щоб було видно, чому вона порожня
+                    CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
                     webChromeClient = object : WebChromeClient() {
                         override fun onConsoleMessage(message: ConsoleMessage): Boolean {
-                            Log.i("X10Web", "${message.messageLevel()} ${message.sourceId()}:${message.lineNumber()} ${message.message()}")
+                            if (message.messageLevel() == ConsoleMessage.MessageLevel.ERROR) {
+                                note("JS: ${message.message()} (${message.sourceId().substringAfterLast('/')}:${message.lineNumber()})")
+                            }
                             return true
                         }
                     }
                     webViewClient = object : WebViewClient() {
                         override fun onReceivedError(view: WebView, request: WebResourceRequest, error: WebResourceError) {
-                            Log.w("X10Web", "load error ${error.errorCode} ${error.description} ${request.url}")
+                            note("${error.description} — ${request.url.host}${request.url.path.orEmpty().take(40)}")
+                        }
+
+                        override fun onReceivedHttpError(view: WebView, request: WebResourceRequest, response: WebResourceResponse) {
+                            if (request.isForMainFrame || request.url.path.orEmpty().endsWith(".js")) {
+                                note("HTTP ${response.statusCode} — ${request.url.host}${request.url.path.orEmpty().take(40)}")
+                            }
+                        }
+
+                        override fun onReceivedSslError(view: WebView, handler: SslErrorHandler, error: SslError) {
+                            note("Сертифікат не прийнято (${error.primaryError}) — ${Uri.parse(error.url).host}")
+                            handler.cancel()
                         }
 
                         override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {

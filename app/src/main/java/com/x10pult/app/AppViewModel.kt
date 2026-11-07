@@ -60,6 +60,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     val lastUser: String get() = store.lastUser
 
+    /** Посилання Xiaomi для підтвердження входу кодом (якщо Xiaomi його попросив). */
+    var verifyUrl by mutableStateOf<String?>(null)
+        private set
+
     // ---------- Вхід ----------
 
     fun loginWithPassword(user: String, password: String) {
@@ -71,14 +75,12 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             progress = "Входжу в акаунт Xiaomi…"
             val ok = try {
                 store.session = MiAuth.loginPassword(user, password, store.deviceId)
+                verifyUrl = null
                 true
             } catch (e: CancellationException) {
                 throw e
             } catch (e: MiNeedsVerification) {
-                CookieManager.getInstance().removeAllCookies(null)
-                webUrl = e.url
-                error = "Xiaomi просить підтвердити вхід кодом із SMS або пошти. Введіть код на сторінці Xiaomi."
-                screen = Screen.LoginWeb
+                verifyUrl = e.url
                 false
             } catch (e: Exception) {
                 error = describe(e)
@@ -98,6 +100,15 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         CookieManager.getInstance().removeAllCookies(null)
         webUrl = MiAuth.LOGIN_URL
         error = null
+        screen = Screen.LoginWeb
+    }
+
+    /** Запасний варіант: сторінка підтвердження у вбудованому вікні. */
+    fun openVerificationHere() {
+        val url = verifyUrl ?: return
+        CookieManager.getInstance().removeAllCookies(null)
+        webUrl = url
+        error = "Введіть код із SMS або пошти на сторінці Xiaomi."
         screen = Screen.LoginWeb
     }
 
