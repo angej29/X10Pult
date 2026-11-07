@@ -7,6 +7,7 @@ import android.system.OsConstants
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
+import java.io.FileDescriptor
 import java.io.IOException
 import java.net.InetAddress
 import java.net.InetSocketAddress
@@ -51,13 +52,19 @@ private class SmallSegmentSocketFactory(private val mss: Int) : SocketFactory() 
     private fun tune(socket: Socket): Socket {
         runCatching {
             socket.tcpNoDelay = true // створює дескриптор сокета ще до з'єднання
-            val pfd = ParcelFileDescriptor.fromSocket(socket) ?: return socket
-            try {
-                Os.setsockoptInt(pfd.fileDescriptor, OsConstants.IPPROTO_TCP, TCP_MAXSEG, mss)
-            } finally {
-                // До Android 11 fromSocket повертає сам дескриптор сокета, а не копію:
-                // close() закрив би з'єднання («Socket closed»), тому лише від'єднуємо.
-                if (Build.VERSION.SDK_INT >= 30) pfd.close() else pfd.detachFd()
+            if (Build.VERSION.SDK_INT >= 30) {
+                // Android 11+: fromSocket дає копію дескриптора — її можна спокійно закрити
+                ParcelFileDescriptor.fromSocket(socket)?.use { pfd ->
+                    Os.setsockoptInt(pfd.fileDescriptor, OsConstants.IPPROTO_TCP, TCP_MAXSEG, mss)
+                }
+            } else {
+                // Android 9–10: fromSocket обгортає сам дескриптор сокета, і будь-яке його закриття
+                // чи від'єднання обриває з'єднання («Socket closed»). Беремо дескриптор напряму;
+                // якщо не вийде — просто лишаємо звичайний розмір пакетів.
+                val fd = Socket::class.java.getMethod("getFileDescriptor\$").invoke(socket) as? FileDescriptor
+                if (fd != null && fd.valid()) {
+                    Os.setsockoptInt(fd, OsConstants.IPPROTO_TCP, TCP_MAXSEG, mss)
+                }
             }
         }
         return socket
