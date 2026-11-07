@@ -39,7 +39,7 @@ object MiAuth {
                 .header("User-Agent", MiHttp.userAgent)
                 .header("Cookie", baseCookies)
                 .build()
-            val (signJson, extraCookies) = MiHttp.client.newCall(first).execute().use { r ->
+            val (signJson, extraCookies) = MiHttp.execute(first).use { r ->
                 parse(r.body?.string().orEmpty()) to setCookies(r)
             }
             val sign = signJson?.optString("_sign").orEmpty()
@@ -60,7 +60,7 @@ object MiAuth {
                 .header("User-Agent", MiHttp.userAgent)
                 .header("Cookie", (listOf(baseCookies) + extraCookies).joinToString("; "))
                 .build()
-            val (status, body) = MiHttp.client.newCall(second).execute().use { it.code to (it.body?.string().orEmpty()) }
+            val (status, body) = MiHttp.execute(second).use { it.code to (it.body?.string().orEmpty()) }
             val json = parse(body) ?: throw MiException("serviceLoginAuth2", status, "HTTP $status: ${body.take(300)}")
 
             val ssecurity = json.optString("ssecurity")
@@ -93,7 +93,7 @@ object MiAuth {
                 .header("User-Agent", MiHttp.userAgent)
                 .header("Cookie", "$SDK; deviceId=$deviceId; userId=$userId; passToken=$passToken")
                 .build()
-            val (status, body) = MiHttp.client.newCall(request).execute().use { it.code to (it.body?.string().orEmpty()) }
+            val (status, body) = MiHttp.execute(request).use { it.code to (it.body?.string().orEmpty()) }
             val json = parse(body) ?: throw MiException("serviceLogin", status, "HTTP $status: ${body.take(300)}")
 
             val code = json.optInt("code", -1)
@@ -116,7 +116,7 @@ object MiAuth {
     private fun serviceToken(location: String, nonce: String, ssecurity: String): String {
         val url = location + "&clientSign=" + URLEncoder.encode(MiCrypto.clientSign(nonce, ssecurity), "UTF-8")
         val request = Request.Builder().url(url).header("User-Agent", MiHttp.userAgent).build()
-        return MiHttp.client.newCall(request).execute().use { response ->
+        return MiHttp.execute(request).use { response ->
             setCookies(response)
                 .firstOrNull { it.startsWith("serviceToken=") }
                 ?.substringAfter('=')

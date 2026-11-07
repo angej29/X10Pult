@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Сервери Xiaomi (account.xiaomi.com, *.api.io.mi.com) підписані центрами GoDaddy з коренем
+  «Go Daddy Root Certificate Authority - G2», а сервер входу — ще й новим «GoDaddy TLS Root CA - R1».
+  На новіших телефонах старий корінь G2 вилучено зі списку довірених, а R1 ще не додано —
+  звідси «Trust anchor for certification path not found». Тому для доменів Xiaomi (і лише для них)
+  до системних сертифікатів додаємо ці два публічні корені GoDaddy.
+-->
+<network-security-config>
+    <domain-config>
+        <domain includeSubdomains="true">xiaomi.com</domain>
+        <domain includeSubdomains="true">mi.com</domain>
+        <trust-anchors>
+            <certificates src="system" />
+            <certificates src="@raw/godaddy_root_g2" />
+            <certificates src="@raw/godaddy_tls_root_r1" />
+        </trust-anchors>
+    </domain-config>
+</network-security-config>

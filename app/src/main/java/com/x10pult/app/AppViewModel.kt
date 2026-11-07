@@ -13,6 +13,7 @@ import com.x10pult.app.mi.MiCloud
 import com.x10pult.app.mi.MiDevice
 import com.x10pult.app.mi.MiException
 import com.x10pult.app.mi.MiNeedsVerification
+import com.x10pult.app.mi.MiNetException
 import com.x10pult.app.mi.MiSession
 import com.x10pult.app.robot.RobotState
 import com.x10pult.app.robot.X10
@@ -297,6 +298,14 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             else -> "${e.message} [${e.stage}, код ${e.code}]"
         }
         is MiAuthExpired -> "доступ застарів, увійдіть у акаунт ще раз"
+        is MiNetException -> "Сервер ${e.host}: " + when (val cause = e.cause) {
+            is javax.net.ssl.SSLHandshakeException ->
+                if (cause.message.orEmpty().contains("Trust anchor")) "телефон не довіряє сертифікату сервера ($cause)"
+                else "не вдалося встановити захищене з'єднання (${cause.message})"
+            is java.net.SocketTimeoutException -> "не відповідає (${cause.message})"
+            is java.net.UnknownHostException -> "немає з'єднання з інтернетом або DNS (${cause.message})"
+            else -> "помилка мережі (${e.message})"
+        }
         is java.net.UnknownHostException -> "немає з'єднання з сервером (${e.message})"
         is java.io.IOException -> "помилка мережі: ${e.message}"
         else -> "${e.javaClass.simpleName}: ${e.message}"

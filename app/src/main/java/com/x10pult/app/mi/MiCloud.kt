@@ -45,7 +45,7 @@ object MiCloud {
                 .header("Cookie", cookies(session))
                 .build()
 
-            MiHttp.client.newCall(request).execute().use { response ->
+            MiHttp.execute(request).use { response ->
                 val body = response.body?.string().orEmpty()
                 if (response.code == 401) throw MiAuthExpired()
                 if (response.code != 200) throw MiException(path, response.code, "HTTP ${response.code}: ${body.take(300)}")
