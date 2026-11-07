@@ -4,3 +4,9 @@ local.properties
 .idea/
 *.iml
 .DS_Store
+
+# Ключі підпису — лише в секретах GitHub, не в репозиторії
+*.p12
+*.jks
+*.keystore
+signing/

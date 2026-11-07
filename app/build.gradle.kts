@@ -16,17 +16,18 @@ android {
         versionName = "1.0"
     }
 
-    // Ключ підпису лежить у цьому приватному репозиторії (signing/x10pult.p12).
-    // Його один раз створює GitHub Actions під час першої збірки — далі всі версії ставляться поверх попередніх.
-    val keyFile = rootProject.file("signing/x10pult.p12")
-    val keyPass = System.getenv("X10_KEY_PASSWORD") ?: "x10pult-key"
+    // Ключ підпису НЕ зберігається в репозиторії. GitHub Actions відновлює його із секретів
+    // X10_KEYSTORE_BASE64 і X10_KEY_PASSWORD. Без них (локальна збірка) release підписується debug-ключем.
+    val keyFile = System.getenv("X10_KEYSTORE_FILE")?.let { file(it) }
+    val keyPass = System.getenv("X10_KEY_PASSWORD")
+    val alias = System.getenv("X10_KEY_ALIAS") ?: "x10pult"
     signingConfigs {
-        if (keyFile.exists()) {
+        if (keyFile != null && keyFile.exists() && keyPass != null) {
             create("x10") {
                 storeFile = keyFile
                 storeType = "pkcs12"
                 storePassword = keyPass
-                keyAlias = "x10pult"
+                keyAlias = alias
                 keyPassword = keyPass
             }
         }

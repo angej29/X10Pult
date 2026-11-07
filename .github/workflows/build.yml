@@ -21,23 +21,30 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v4
 
-      # Ключ підпису створюється один раз і зберігається в цьому приватному репозиторії,
-      # щоб кожна нова версія ставилася поверх попередньої.
-      - name: Signing key
+      # Ключ підпису — лише в секретах репозиторію (Settings > Secrets and variables > Actions),
+      # щоб кожна нова версія ставилася поверх попередньої, а сам ключ не був публічним.
+      - name: Restore signing key
+        env:
+          X10_KEYSTORE_BASE64: ${{ secrets.X10_KEYSTORE_BASE64 }}
+          X10_KEY_PASSWORD: ${{ secrets.X10_KEY_PASSWORD }}
         run: |
-          if [ ! -f signing/x10pult.p12 ]; then
-            mkdir -p signing
-            keytool -genkeypair -storetype PKCS12 -keystore signing/x10pult.p12 -alias x10pult \
-              -keyalg RSA -keysize 2048 -validity 10000 \
-              -storepass x10pult-key -keypass x10pult-key -dname "CN=X10 Pult"
-            git config user.name "github-actions"
-            git config user.email "github-actions@users.noreply.github.com"
-            git add signing/x10pult.p12
-            git commit -m "Signing key for X10 Pult [skip ci]"
-            git push
+          if [ -z "$X10_KEYSTORE_BASE64" ] || [ -z "$X10_KEY_PASSWORD" ]; then
+            echo "::error::Add X10_KEYSTORE_BASE64 and X10_KEY_PASSWORD in Settings > Secrets and variables > Actions"
+            exit 1
           fi
+          echo "$X10_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/x10pult.p12"
+          alias=$(keytool -list -v -storetype PKCS12 -keystore "$RUNNER_TEMP/x10pult.p12" -storepass "$X10_KEY_PASSWORD" \
+            | sed -n 's/^Alias name: //p' | head -1)
+          if [ -z "$alias" ]; then
+            echo "::error::Signing key cannot be read: check X10_KEYSTORE_BASE64 and X10_KEY_PASSWORD"
+            exit 1
+          fi
+          echo "X10_KEYSTORE_FILE=$RUNNER_TEMP/x10pult.p12" >> "$GITHUB_ENV"
+          echo "X10_KEY_ALIAS=$alias" >> "$GITHUB_ENV"
 
       - name: Build
+        env:
+          X10_KEY_PASSWORD: ${{ secrets.X10_KEY_PASSWORD }}
         run: |
           chmod +x gradlew
           ./gradlew assembleRelease --no-daemon --stacktrace
