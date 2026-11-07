@@ -73,32 +73,50 @@ object MiCloud {
             "is_daylight=${if (daylight) 1 else 0}; dst_offset=${if (daylight) zone.dstSavings else 0}; channel=MI_APP_STORE"
     }
 
-    suspend fun devices(session: MiSession, server: String): List<MiDevice> {
+    /** Пристрої одного сервера + коротка довідка, що саме повернула хмара (для журналу пошуку). */
+    data class ScanResult(val devices: List<MiDevice>, val note: String)
+
+    suspend fun scanServer(session: MiSession, server: String): ScanResult {
+        // 1. Класичний список пристроїв акаунта (свої й ті, якими поділилися)
         val data = """{"getVirtualModel":true,"getHuamiDevices":1,"get_split_device":false,"support_smart_home":true}"""
-        val list = call(session, server, "/home/device_list", data).optJSONObject("result")?.optJSONArray("list")
-        val found = parseDevices(list, server)
-        return found.ifEmpty { devicesByHomes(session, server) }
+        val response = call(session, server, "/home/device_list", data)
+        val result = response.optJSONObject("result")
+        val list = result?.optJSONArray("list")
+        val direct = parseDevices(list, server)
+
+        // 2. Будинки акаунта (власні й спільні) → пристрої кожного будинку
+        var homeCount = -1
+        var homeDevices = emptyList<MiDevice>()
+        runCatching {
+            val homesResult = call(
+                session, server, "/v2/homeroom/gethome",
+                """{"fg":true,"fetch_share":true,"fetch_share_dev":true,"limit":300,"app_ver":7}""",
+            ).optJSONObject("result")
+            val homes = ArrayList<JSONObject>()
+            listOf("homelist", "share_home_list").forEach { key ->
+                homesResult?.optJSONArray(key)?.let { arr -> for (i in 0 until arr.length()) arr.optJSONObject(i)?.let(homes::add) }
+            }
+            homeCount = homes.size
+            homeDevices = homes.flatMap { home -> devicesOfHome(session, server, home) }
+        }
+
+        val all = (direct + homeDevices).distinctBy { it.did }
+        val note = buildString {
+            append("список ${list?.length() ?: "—"}, будинків ${if (homeCount < 0) "—" else homeCount}, у будинках ${homeDevices.size}")
+            if (all.isEmpty()) append(" · відповідь: ").append((result ?: response).toString().take(140))
+        }
+        return ScanResult(all, note)
     }
 
-    /** Новіший спосіб: будинки акаунта → пристрої кожного будинку. */
-    private suspend fun devicesByHomes(session: MiSession, server: String): List<MiDevice> {
-        val homes = call(
-            session, server, "/v2/homeroom/gethome",
-            """{"fg":true,"fetch_share":true,"fetch_share_dev":true,"limit":300,"app_ver":7}""",
-        ).optJSONObject("result")?.optJSONArray("homelist") ?: return emptyList()
-        val out = ArrayList<MiDevice>()
-        for (i in 0 until homes.length()) {
-            val home = homes.optJSONObject(i) ?: continue
-            val data = JSONObject()
-                .put("home_owner", home.opt("uid") ?: session.userId)
-                .put("home_id", home.opt("id"))
-                .put("limit", 200)
-                .put("get_split_device", true)
-                .put("support_smart_home", true)
-            val result = runCatching { call(session, server, "/v2/home/home_device_list", data.toString()) }.getOrNull()
-            out += parseDevices(result?.optJSONObject("result")?.optJSONArray("device_info"), server)
-        }
-        return out.distinctBy { it.did }
+    private suspend fun devicesOfHome(session: MiSession, server: String, home: JSONObject): List<MiDevice> {
+        val data = JSONObject()
+            .put("home_owner", home.opt("uid") ?: session.userId)
+            .put("home_id", home.opt("id"))
+            .put("limit", 200)
+            .put("get_split_device", true)
+            .put("support_smart_home", true)
+        val result = runCatching { call(session, server, "/v2/home/home_device_list", data.toString()) }.getOrNull()
+        return parseDevices(result?.optJSONObject("result")?.optJSONArray("device_info"), server)
     }
 
     private fun parseDevices(list: JSONArray?, server: String): List<MiDevice> {

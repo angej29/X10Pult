@@ -223,9 +223,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             for (server in MiCloud.SERVERS) {
                 progress = "Шукаю пристрої на сервері $server…"
                 try {
-                    val list = withAuth { s -> MiCloud.devices(s, server) }
-                    log += "$server: пристроїв ${list.size}"
-                    found += list
+                    val scan = withAuth { s -> MiCloud.scanServer(s, server) }
+                    log += "$server: пристроїв ${scan.devices.size} (${scan.note})"
+                    found += scan.devices
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Exception) {
