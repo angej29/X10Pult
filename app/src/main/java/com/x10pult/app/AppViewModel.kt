@@ -121,6 +121,24 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         screen = Screen.LoginWeb
     }
 
+    /** Результат «Перевірити зв'язок із Xiaomi». */
+    var checkLines by mutableStateOf<List<String>>(emptyList())
+        private set
+
+    fun checkConnection() {
+        if (busy) return
+        viewModelScope.launch {
+            busy = true
+            progress = "Перевіряю зв'язок із серверами Xiaomi…"
+            try {
+                checkLines = MiAuth.checkServers(store.deviceId)
+            } finally {
+                busy = false
+                progress = null
+            }
+        }
+    }
+
     fun refreshCaptcha() {
         val current = captcha ?: return
         if (busy) return

@@ -120,6 +120,10 @@ fun LoginScreen(vm: AppViewModel) {
             modifier = Modifier.fillMaxWidth().height(52.dp),
         ) { Text("Увійти") }
         TextButton(onClick = vm::startWebLogin, enabled = !vm.busy) { Text("Увійти через сторінку Xiaomi") }
+        TextButton(onClick = vm::checkConnection, enabled = !vm.busy) { Text("Перевірити зв'язок із Xiaomi") }
+        if (vm.checkLines.isNotEmpty()) {
+            Text(vm.checkLines.joinToString("\n"), style = MaterialTheme.typography.bodySmall)
+        }
 
         Text(
             "Пароль надсилається лише на сервер входу Xiaomi (account.xiaomi.com) і ніде не зберігається. " +

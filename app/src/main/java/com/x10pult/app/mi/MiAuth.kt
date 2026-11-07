@@ -98,6 +98,31 @@ object MiAuth {
             throw MiException("serviceLoginAuth2", json.optInt("code", -1), describe(json, body))
         }
 
+    /**
+     * Перевірка зв'язку без даних акаунта: чи відповідають сервер входу й сервери Mijia.
+     * Повертає рядки «сервер: результат, час».
+     */
+    suspend fun checkServers(deviceId: String): List<String> = withContext(Dispatchers.IO) {
+        listOf(
+            SERVICE_LOGIN to "account.xiaomi.com (вхід)",
+            "https://$STS_HOST/sts?d=check" to "$STS_HOST (токени Mijia)",
+            "https://de.api.io.mi.com/app" to "de.api.io.mi.com (хмара, Європа)",
+        ).map { (url, name) ->
+            val start = System.currentTimeMillis()
+            try {
+                val request = Request.Builder().url(url)
+                    .header("User-Agent", MiHttp.userAgent)
+                    .header("Cookie", "$SDK; deviceId=$deviceId")
+                    .build()
+                val code = MiHttp.execute(request).use { it.code }
+                "✓ $name — відповідь $code за ${System.currentTimeMillis() - start} мс"
+            } catch (e: Exception) {
+                val cause = (e.cause ?: e)
+                "✗ $name — ${cause.javaClass.simpleName}: ${cause.message} (${System.currentTimeMillis() - start} мс)"
+            }
+        }
+    }
+
     /** Нова картинка капчі (кнопка «Інша картинка»). */
     suspend fun refreshCaptcha(url: String, deviceId: String): MiNeedsCaptcha =
         withContext(Dispatchers.IO) { captcha(url, "$SDK; deviceId=$deviceId") }
