@@ -12,6 +12,7 @@ import com.x10pult.app.mi.MiAuthExpired
 import com.x10pult.app.mi.MiCloud
 import com.x10pult.app.mi.MiDevice
 import com.x10pult.app.mi.MiException
+import com.x10pult.app.mi.MiNeedsCaptcha
 import com.x10pult.app.mi.MiNeedsVerification
 import com.x10pult.app.mi.MiNetException
 import com.x10pult.app.mi.MiSession
@@ -64,23 +65,40 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     var verifyUrl by mutableStateOf<String?>(null)
         private set
 
+    /** Капча Xiaomi (картинка й кука ick), якщо Xiaomi її попросив. */
+    var captcha by mutableStateOf<MiNeedsCaptcha?>(null)
+        private set
+
     // ---------- Вхід ----------
 
-    fun loginWithPassword(user: String, password: String) {
+    fun loginWithPassword(user: String, password: String, captchaCode: String? = null) {
         if (busy || user.isBlank() || password.isEmpty()) return
         store.lastUser = user
+        val shownCaptcha = captcha
         viewModelScope.launch {
             busy = true
             error = null
+            verifyUrl = null
             progress = "Входжу в акаунт Xiaomi…"
             val ok = try {
-                store.session = MiAuth.loginPassword(user, password, store.deviceId)
-                verifyUrl = null
+                store.session = MiAuth.loginPassword(
+                    user, password, store.deviceId,
+                    captchaCode = captchaCode.takeIf { shownCaptcha != null },
+                    ick = shownCaptcha?.ick,
+                )
+                captcha = null
                 true
             } catch (e: CancellationException) {
                 throw e
             } catch (e: MiNeedsVerification) {
+                captcha = null
                 verifyUrl = e.url
+                false
+            } catch (e: MiNeedsCaptcha) {
+                captcha = e
+                if (shownCaptcha != null && !captchaCode.isNullOrBlank()) {
+                    error = "Символи з картинки не підійшли — ось нова картинка, спробуйте ще раз."
+                }
                 false
             } catch (e: Exception) {
                 error = describe(e)
@@ -101,6 +119,23 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         webUrl = MiAuth.LOGIN_URL
         error = null
         screen = Screen.LoginWeb
+    }
+
+    fun refreshCaptcha() {
+        val current = captcha ?: return
+        if (busy) return
+        viewModelScope.launch {
+            busy = true
+            try {
+                captcha = MiAuth.refreshCaptcha(current.url, store.deviceId)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                error = describe(e)
+            } finally {
+                busy = false
+            }
+        }
     }
 
     /** Запасний варіант: сторінка підтвердження у вбудованому вікні. */

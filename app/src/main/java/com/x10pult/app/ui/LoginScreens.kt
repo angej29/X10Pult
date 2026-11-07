@@ -3,7 +3,14 @@ package com.x10pult.app.ui
 import android.annotation.SuppressLint
 import android.content.Intent
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.net.Uri
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
 import android.net.http.SslError
 import android.util.Log
 import android.webkit.ConsoleMessage
@@ -61,7 +68,9 @@ import com.x10pult.app.mi.MiAuth
 fun LoginScreen(vm: AppViewModel) {
     var user by rememberSaveable { mutableStateOf(vm.lastUser) }
     var password by remember { mutableStateOf("") }
-    val submit = { vm.loginWithPassword(user.trim(), password) }
+    var captchaText by remember { mutableStateOf("") }
+    val submit = { vm.loginWithPassword(user.trim(), password, captchaText.trim().ifEmpty { null }) }
+    LaunchedEffect(vm.captcha) { captchaText = "" }
 
     Column(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp),
@@ -75,6 +84,15 @@ fun LoginScreen(vm: AppViewModel) {
         vm.error?.let { ErrorCard(it) }
         if (vm.busy) BusyRow(vm.progress)
         vm.verifyUrl?.let { url -> VerifyCard(url, onHere = vm::openVerificationHere) }
+        vm.captcha?.let { cap ->
+            CaptchaCard(
+                image = cap.image,
+                text = captchaText,
+                onText = { captchaText = it },
+                enabled = !vm.busy,
+                onRefresh = vm::refreshCaptcha,
+            )
+        }
 
         OutlinedTextField(
             value = user,
@@ -148,6 +166,52 @@ private fun VerifyCard(url: String, onHere: () -> Unit) {
                 copied = true
             }) { Text(if (copied) "Посилання скопійовано — вставте в браузер на комп'ютері" else "Скопіювати посилання") }
             TextButton(onClick = onHere) { Text("Відкрити тут, у застосунку") }
+        }
+    }
+}
+
+/** Капча Xiaomi: картинка, поле для символів і «Інша картинка». Відповідь іде разом із «Увійти». */
+@Composable
+private fun CaptchaCard(
+    image: ByteArray,
+    text: String,
+    onText: (String) -> Unit,
+    enabled: Boolean,
+    onRefresh: () -> Unit,
+) {
+    val bitmap = remember(image) { BitmapFactory.decodeByteArray(image, 0, image.size)?.asImageBitmap() }
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),
+    ) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("Xiaomi просить ввести символи з картинки", style = MaterialTheme.typography.titleMedium)
+            if (bitmap != null) {
+                Image(
+                    bitmap = bitmap,
+                    contentDescription = "Капча Xiaomi",
+                    modifier = Modifier
+                        .height(80.dp)
+                        .background(Color.White, RoundedCornerShape(8.dp))
+                        .padding(4.dp),
+                )
+            } else {
+                Text("Картинку не вдалося показати — натисніть «Інша картинка».")
+            }
+            OutlinedTextField(
+                value = text,
+                onValueChange = onText,
+                label = { Text("Символи з картинки") },
+                singleLine = true,
+                enabled = enabled,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Ascii, imeAction = ImeAction.Next),
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Text(
+                "Введіть символи й натисніть «Увійти» нижче.",
+                style = MaterialTheme.typography.bodySmall,
+            )
+            TextButton(onClick = onRefresh, enabled = enabled) { Text("Інша картинка") }
         }
     }
 }

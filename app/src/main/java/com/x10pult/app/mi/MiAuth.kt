@@ -12,6 +12,9 @@ import java.security.MessageDigest
 /** Xiaomi просить підтвердити вхід (код із SMS чи пошти) на своїй сторінці. */
 class MiNeedsVerification(val url: String) : Exception("потрібне підтвердження входу")
 
+/** Xiaomi просить ввести символи з картинки. ick — кука, що прив'язує відповідь до цієї картинки. */
+class MiNeedsCaptcha(val image: ByteArray, val ick: String, val url: String) : Exception("потрібна капча")
+
 /**
  * Вхід у хмару Xiaomi.
  * Основний шлях — логін і пароль (як у Xiaomi Home):
@@ -31,10 +34,19 @@ object MiAuth {
     private const val AUTH2 = "https://account.xiaomi.com/pass/serviceLoginAuth2"
     private const val SDK = "sdkVersion=accountsdk-18.8.15"
 
-    /** Вхід логіном (пошта, телефон або Mi ID) і паролем Xiaomi. */
-    suspend fun loginPassword(user: String, password: String, deviceId: String): MiSession =
+    /**
+     * Вхід логіном (пошта, телефон або Mi ID) і паролем Xiaomi.
+     * captchaCode / ick — відповідь на капчу, якщо Xiaomi її попросив на попередній спробі.
+     */
+    suspend fun loginPassword(
+        user: String,
+        password: String,
+        deviceId: String,
+        captchaCode: String? = null,
+        ick: String? = null,
+    ): MiSession =
         withContext(Dispatchers.IO) {
-            val baseCookies = "$SDK; deviceId=$deviceId"
+            val baseCookies = "$SDK; deviceId=$deviceId" + (ick?.takeIf { it.isNotEmpty() }?.let { "; ick=$it" } ?: "")
             val first = Request.Builder().url(SERVICE_LOGIN)
                 .header("User-Agent", MiHttp.userAgent)
                 .header("Cookie", baseCookies)
@@ -55,6 +67,7 @@ object MiAuth {
                 .add("user", user)
                 .add("_sign", sign)
                 .add("_json", "true")
+                .apply { captchaCode?.takeIf { it.isNotBlank() }?.let { add("captCode", it.trim()) } }
                 .build()
             val second = Request.Builder().url(AUTH2).post(form)
                 .header("User-Agent", MiHttp.userAgent)
@@ -80,11 +93,27 @@ object MiAuth {
             if (notification.isNotEmpty()) {
                 throw MiNeedsVerification(if (notification.startsWith("http")) notification else "https://account.xiaomi.com$notification")
             }
-            if (json.optString("captchaUrl").isNotEmpty()) {
-                throw MiException("captcha", json.optInt("code", -1), "Xiaomi просить ввести капчу")
-            }
+            val captchaUrl = if (json.isNull("captchaUrl")) "" else json.optString("captchaUrl")
+            if (captchaUrl.isNotEmpty()) throw captcha(captchaUrl, "$SDK; deviceId=$deviceId")
             throw MiException("serviceLoginAuth2", json.optInt("code", -1), describe(json, body))
         }
+
+    /** Нова картинка капчі (кнопка «Інша картинка»). */
+    suspend fun refreshCaptcha(url: String, deviceId: String): MiNeedsCaptcha =
+        withContext(Dispatchers.IO) { captcha(url, "$SDK; deviceId=$deviceId") }
+
+    private fun captcha(path: String, cookies: String): MiNeedsCaptcha {
+        val base = if (path.startsWith("http")) path else "https://account.xiaomi.com$path"
+        val url = base.substringBefore("&_dc=") + "&_dc=" + System.currentTimeMillis()
+        val request = Request.Builder().url(url)
+            .header("User-Agent", MiHttp.userAgent)
+            .header("Cookie", cookies)
+            .build()
+        return MiHttp.execute(request).use { r ->
+            val ick = setCookies(r).firstOrNull { it.startsWith("ick=") }?.substringAfter('=').orEmpty()
+            MiNeedsCaptcha(r.body?.bytes() ?: ByteArray(0), ick, base)
+        }
+    }
 
     /** Оновлення доступу за збереженим passToken (без пароля). */
     suspend fun session(userId: String, cUserId: String, passToken: String, deviceId: String): MiSession =

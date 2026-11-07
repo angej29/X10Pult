@@ -1,5 +1,6 @@
 package com.x10pult.app.mi
 
+import android.os.Build
 import android.os.ParcelFileDescriptor
 import android.system.Os
 import android.system.OsConstants
@@ -50,8 +51,13 @@ private class SmallSegmentSocketFactory(private val mss: Int) : SocketFactory() 
     private fun tune(socket: Socket): Socket {
         runCatching {
             socket.tcpNoDelay = true // створює дескриптор сокета ще до з'єднання
-            ParcelFileDescriptor.fromSocket(socket)?.use { pfd ->
+            val pfd = ParcelFileDescriptor.fromSocket(socket) ?: return socket
+            try {
                 Os.setsockoptInt(pfd.fileDescriptor, OsConstants.IPPROTO_TCP, TCP_MAXSEG, mss)
+            } finally {
+                // До Android 11 fromSocket повертає сам дескриптор сокета, а не копію:
+                // close() закрив би з'єднання («Socket closed»), тому лише від'єднуємо.
+                if (Build.VERSION.SDK_INT >= 30) pfd.close() else pfd.detachFd()
             }
         }
         return socket
