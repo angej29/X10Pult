@@ -95,6 +95,7 @@ fun LoginWebScreen(vm: AppViewModel) {
     Column(Modifier.fillMaxSize()) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             TextButton(onClick = vm::cancelWebLogin) { Text("Скасувати") }
+            TextButton(onClick = { holder.web?.loadUrl(MiAuth.LOGIN_URL) }) { Text("Оновити") }
             Spacer(Modifier.weight(1f))
             TextButton(onClick = finish) { Text("Я вже увійшов") }
         }

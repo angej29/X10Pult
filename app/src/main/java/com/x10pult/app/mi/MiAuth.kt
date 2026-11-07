@@ -14,7 +14,9 @@ import java.net.URLEncoder
  *    тож тут зберігаємо повний текст відповіді сервера.
  */
 object MiAuth {
-    const val LOGIN_URL = "https://account.xiaomi.com/pass/serviceLogin?sid=xiaomiio&_json=false"
+    // Без _json: сервер одразу перенаправляє на сторінку входу /fe/service/login з callback на sts.
+    // Варіант із &_json=false сервер Xiaomi не обслуговує (з'єднання висить до тайм-ауту).
+    const val LOGIN_URL = "https://account.xiaomi.com/pass/serviceLogin?sid=xiaomiio"
     const val STS_HOST = "sts.api.io.mi.com"
     private const val SERVICE_LOGIN = "https://account.xiaomi.com/pass/serviceLogin?sid=xiaomiio&_json=true"
 
