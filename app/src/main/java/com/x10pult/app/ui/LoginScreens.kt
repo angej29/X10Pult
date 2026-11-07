@@ -3,11 +3,25 @@ package com.x10pult.app.ui
 import android.annotation.SuppressLint
 import android.graphics.Bitmap
 import android.net.Uri
+import android.util.Log
+import android.webkit.ConsoleMessage
 import android.webkit.CookieManager
+import android.webkit.WebChromeClient
+import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -35,30 +49,52 @@ import com.x10pult.app.mi.MiAuth
 
 @Composable
 fun LoginScreen(vm: AppViewModel) {
+    var user by rememberSaveable { mutableStateOf(vm.lastUser) }
+    var password by remember { mutableStateOf("") }
+    val submit = { vm.loginWithPassword(user.trim(), password) }
+
     Column(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         Text("X10 Пульт", style = MaterialTheme.typography.headlineMedium)
         Text(
-            "Керування пилососом Xiaomi Robot Vacuum X10+ через хмару Xiaomi — без застосунку Xiaomi Home.",
+            "Керування пилососом Xiaomi Robot Vacuum X10+ — без застосунку Xiaomi Home.",
             style = MaterialTheme.typography.bodyLarge,
         )
         vm.error?.let { ErrorCard(it) }
         if (vm.busy) BusyRow(vm.progress)
-        Button(
-            onClick = vm::startWebLogin,
+
+        OutlinedTextField(
+            value = user,
+            onValueChange = { user = it },
+            label = { Text("Пошта, телефон або Mi ID") },
+            singleLine = true,
             enabled = !vm.busy,
-            modifier = Modifier.fillMaxWidth().height(52.dp),
-        ) { Text("Увійти в акаунт Xiaomi") }
-        Text(
-            "Відкриється сторінка входу Xiaomi. Увійдіть поштою або номером телефону й паролем Xiaomi: " +
-                "вхід через Google у вбудованому вікні Google може не пропустити. Код із SMS чи пошти " +
-                "вводьте на тій самій сторінці.",
-            style = MaterialTheme.typography.bodyMedium,
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email, imeAction = ImeAction.Next),
+            modifier = Modifier.fillMaxWidth(),
         )
+        OutlinedTextField(
+            value = password,
+            onValueChange = { password = it },
+            label = { Text("Пароль Xiaomi") },
+            singleLine = true,
+            enabled = !vm.busy,
+            visualTransformation = PasswordVisualTransformation(),
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done),
+            keyboardActions = KeyboardActions(onDone = { submit() }),
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Button(
+            onClick = { submit() },
+            enabled = !vm.busy && user.isNotBlank() && password.isNotEmpty(),
+            modifier = Modifier.fillMaxWidth().height(52.dp),
+        ) { Text("Увійти") }
+        TextButton(onClick = vm::startWebLogin, enabled = !vm.busy) { Text("Увійти через сторінку Xiaomi") }
+
         Text(
-            "Пароль вводиться лише на сторінці Xiaomi. Застосунок зберігає на цьому пристрої тільки ключі доступу до хмари.",
+            "Пароль надсилається лише на сервер входу Xiaomi (account.xiaomi.com) і ніде не зберігається. " +
+                "Застосунок пам'ятає тільки ключі доступу до хмари на цьому пристрої.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -92,12 +128,21 @@ fun LoginWebScreen(vm: AppViewModel) {
         onDispose { holder.web?.destroy() }
     }
 
+    val url = vm.webUrl
     Column(Modifier.fillMaxSize()) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             TextButton(onClick = vm::cancelWebLogin) { Text("Скасувати") }
-            TextButton(onClick = { holder.web?.loadUrl(MiAuth.LOGIN_URL) }) { Text("Оновити") }
+            TextButton(onClick = { holder.web?.loadUrl(url) }) { Text("Оновити") }
             Spacer(Modifier.weight(1f))
             TextButton(onClick = finish) { Text("Я вже увійшов") }
+        }
+        vm.error?.let {
+            Text(
+                it,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.primary,
+            )
         }
         AndroidView(
             modifier = Modifier.fillMaxWidth().weight(1f),
@@ -106,7 +151,18 @@ fun LoginWebScreen(vm: AppViewModel) {
                     settings.javaScriptEnabled = true
                     settings.domStorageEnabled = true
                     CookieManager.getInstance().setAcceptCookie(true)
+                    // Помилки сторінки — у журнал (logcat, тег X10Web), щоб було видно, чому вона порожня
+                    webChromeClient = object : WebChromeClient() {
+                        override fun onConsoleMessage(message: ConsoleMessage): Boolean {
+                            Log.i("X10Web", "${message.messageLevel()} ${message.sourceId()}:${message.lineNumber()} ${message.message()}")
+                            return true
+                        }
+                    }
                     webViewClient = object : WebViewClient() {
+                        override fun onReceivedError(view: WebView, request: WebResourceRequest, error: WebResourceError) {
+                            Log.w("X10Web", "load error ${error.errorCode} ${error.description} ${request.url}")
+                        }
+
                         override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
                             if (request.url.host == MiAuth.STS_HOST) {
                                 finish()
@@ -122,7 +178,7 @@ fun LoginWebScreen(vm: AppViewModel) {
                             }
                         }
                     }
-                    loadUrl(MiAuth.LOGIN_URL)
+                    loadUrl(url)
                     holder.web = this
                 }
             },

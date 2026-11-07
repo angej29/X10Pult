@@ -12,6 +12,7 @@ import com.x10pult.app.mi.MiAuthExpired
 import com.x10pult.app.mi.MiCloud
 import com.x10pult.app.mi.MiDevice
 import com.x10pult.app.mi.MiException
+import com.x10pult.app.mi.MiNeedsVerification
 import com.x10pult.app.mi.MiSession
 import com.x10pult.app.robot.RobotState
 import com.x10pult.app.robot.X10
@@ -52,10 +53,49 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         if (screen == Screen.Devices) scan()
     }
 
+    /** Адреса сторінки у вбудованому вікні: вхід Xiaomi або підтвердження входу кодом. */
+    var webUrl by mutableStateOf(MiAuth.LOGIN_URL)
+        private set
+
+    val lastUser: String get() = store.lastUser
+
     // ---------- Вхід ----------
+
+    fun loginWithPassword(user: String, password: String) {
+        if (busy || user.isBlank() || password.isEmpty()) return
+        store.lastUser = user
+        viewModelScope.launch {
+            busy = true
+            error = null
+            progress = "Входжу в акаунт Xiaomi…"
+            val ok = try {
+                store.session = MiAuth.loginPassword(user, password, store.deviceId)
+                true
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: MiNeedsVerification) {
+                CookieManager.getInstance().removeAllCookies(null)
+                webUrl = e.url
+                error = "Xiaomi просить підтвердити вхід кодом із SMS або пошти. Введіть код на сторінці Xiaomi."
+                screen = Screen.LoginWeb
+                false
+            } catch (e: Exception) {
+                error = describe(e)
+                false
+            } finally {
+                busy = false
+                progress = null
+            }
+            if (ok) {
+                screen = Screen.Devices
+                scan()
+            }
+        }
+    }
 
     fun startWebLogin() {
         CookieManager.getInstance().removeAllCookies(null)
+        webUrl = MiAuth.LOGIN_URL
         error = null
         screen = Screen.LoginWeb
     }
@@ -249,6 +289,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun describe(e: Exception): String = when (e) {
         is MiException -> when (e.stage) {
+            "serviceLoginAuth2" -> if (e.code == 70016) "Невірний логін або пароль Xiaomi (код 70016)."
+                else "Xiaomi не прийняв вхід (код ${e.code}): ${e.message}"
+            "captcha" -> "Xiaomi просить ввести капчу. Скористайтеся кнопкою «Увійти через сторінку Xiaomi»."
             "serviceLogin" -> "Xiaomi не видав доступ до сервісу Mijia (код ${e.code}): ${e.message}"
             "sts" -> "Сервер токенів Mijia відмовив (HTTP ${e.code}): ${e.message}"
             else -> "${e.message} [${e.stage}, код ${e.code}]"

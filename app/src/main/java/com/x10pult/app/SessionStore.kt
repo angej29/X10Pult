@@ -66,6 +66,11 @@ class SessionStore(context: Context) {
             }.apply()
         }
 
+    /** Останній введений логін (пароль не зберігається). */
+    var lastUser: String
+        get() = prefs.getString("lastUser", "").orEmpty()
+        set(value) = prefs.edit().putString("lastUser", value).apply()
+
     fun clear() {
         session = null
         device = null

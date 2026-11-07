@@ -12,8 +12,8 @@ android {
         applicationId = "com.x10pult.app"
         minSdk = 24
         targetSdk = 36
-        versionCode = 2
-        versionName = "1.1"
+        versionCode = 3
+        versionName = "1.2"
     }
 
     // Ключ підпису НЕ зберігається в репозиторії. GitHub Actions відновлює його із секретів
