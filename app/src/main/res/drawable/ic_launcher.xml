@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Значок: бірюзове коло, білий круглий робот-пилосос із датчиком і бампером -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="48dp"
+    android:height="48dp"
+    android:viewportWidth="48"
+    android:viewportHeight="48">
+    <path
+        android:fillColor="#FF00897B"
+        android:pathData="M24,2A22,22 0,1 1,23.99 2Z" />
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M24,10A14,14 0,1 1,23.99 10Z" />
+    <path
+        android:fillColor="#FF00897B"
+        android:pathData="M24,17A4,4 0,1 1,23.99 17Z" />
+    <path
+        android:fillColor="#FF26A69A"
+        android:pathData="M13.5,27.5h21v3h-21z" />
+</vector>

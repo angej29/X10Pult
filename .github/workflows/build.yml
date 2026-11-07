@@ -1,0 +1,58 @@
+name: Build APK
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      # Ключ підпису створюється один раз і зберігається в цьому приватному репозиторії,
+      # щоб кожна нова версія ставилася поверх попередньої.
+      - name: Signing key
+        run: |
+          if [ ! -f signing/x10pult.p12 ]; then
+            mkdir -p signing
+            keytool -genkeypair -storetype PKCS12 -keystore signing/x10pult.p12 -alias x10pult \
+              -keyalg RSA -keysize 2048 -validity 10000 \
+              -storepass x10pult-key -keypass x10pult-key -dname "CN=X10 Pult"
+            git config user.name "github-actions"
+            git config user.email "github-actions@users.noreply.github.com"
+            git add signing/x10pult.p12
+            git commit -m "Signing key for X10 Pult [skip ci]"
+            git push
+          fi
+
+      - name: Build
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleRelease --no-daemon --stacktrace
+
+      - name: Rename APK
+        run: cp app/build/outputs/apk/release/app-release.apk X10Pult-${{ github.run_number }}.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: X10Pult-apk
+          path: X10Pult-${{ github.run_number }}.apk
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: build-${{ github.run_number }}
+          name: X10 Pult build ${{ github.run_number }}
+          files: X10Pult-${{ github.run_number }}.apk

@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Передній план адаптивного значка (108×108, видима зона — центральні 66) -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M54,28A26,26 0,1 1,53.99 28Z" />
+    <path
+        android:fillColor="#FF00897B"
+        android:pathData="M54,41A7,7 0,1 1,53.99 41Z" />
+    <path
+        android:fillColor="#FF26A69A"
+        android:pathData="M34,58h40v5h-40z" />
+</vector>
