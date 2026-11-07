@@ -16,7 +16,9 @@ import android.webkit.WebResourceResponse
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.AnnotatedString
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.activity.compose.BackHandler
@@ -122,6 +124,8 @@ fun LoginScreen(vm: AppViewModel) {
 @Composable
 private fun VerifyCard(url: String, onHere: () -> Unit) {
     val context = LocalContext.current
+    val clipboard = LocalClipboardManager.current
+    var copied by remember { mutableStateOf(false) }
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),
@@ -139,6 +143,10 @@ private fun VerifyCard(url: String, onHere: () -> Unit) {
                 },
                 modifier = Modifier.fillMaxWidth(),
             ) { Text("Відкрити в браузері") }
+            TextButton(onClick = {
+                clipboard.setText(AnnotatedString(url))
+                copied = true
+            }) { Text(if (copied) "Посилання скопійовано — вставте в браузер на комп'ютері" else "Скопіювати посилання") }
             TextButton(onClick = onHere) { Text("Відкрити тут, у застосунку") }
         }
     }
